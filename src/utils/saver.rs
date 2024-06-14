@@ -1,37 +1,40 @@
-use core::ops::DerefMut;
+use std::{ io::{ Write, Seek } };
 use super::AsU8Slice;
 
-pub struct Saver< D: DerefMut< Target = [u8] > > {
-    slice : D,
-    offset: usize
+pub struct Saver< T: Write + Seek > {
+    to: T
 }
 
-impl< D: DerefMut< Target = [u8] > > Saver< D > {
-    pub fn from(slice: D) -> Self {
+impl< T: Write + Seek > Saver< T > {
+    pub fn to(to: T) -> Self {
         Self {
-            slice,
-            offset: 0
+            to
         }
     }
 
-    pub fn save< T: AsU8Slice + ?Sized >(&mut self, to: &mut T) -> Option< () > {
-        let s        = T::as_u8_slice(to);
-        let range    = self.offset..self.offset + s.len();
-        let write    = self.slice.get_mut(range)?;
-        self.offset += s.len();
-        write.copy_from_slice(s);
-        Some(())
+    pub fn save< F: AsU8Slice + ?Sized >(&mut self, from: &F) -> Option< () > {
+        let s = from.as_u8_slice();
+        self.to.write_all(s).ok().map(|_| ())
     }
 
-    pub unsafe fn seek_unchecked(&mut self, n: usize) {
-        self.offset = n;
+    pub fn skip(&mut self, n: usize) -> Option< () > {
+        self.to.seek(std::io::SeekFrom::Current(n as i64)).ok().map(|_| ())
     }
 
-    pub fn offset(&self) -> usize {
-        self.offset
+    pub fn rewind(&mut self, n: usize) -> Option< () > {
+        self.to.seek(std::io::SeekFrom::Current(-(n as i64))).ok().map(|_| ())
     }
 
-    pub fn len(&self) -> usize {
-        self.slice.len()
+    pub fn seek(&mut self, n: usize) -> Option< () > {
+        self.to.seek(std::io::SeekFrom::Start(n as u64)).ok().map(|_| ())
+    }
+
+    pub fn pos(&mut self) -> usize {
+        self.to.stream_position().ok().unwrap() as usize
+    }
+
+    pub fn len(&mut self) -> usize {
+        self.to.stream_len().ok().unwrap() as usize
     }
 }
+

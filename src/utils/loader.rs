@@ -13,7 +13,7 @@ impl< F: Read + Seek > Loader< F > {
     }
 
     pub fn load_to< T: AsU8Slice + ?Sized >(&mut self, to: &mut T) -> Option< () > {
-        let s = T::as_mut_u8_slice(to);
+        let s = to.as_mut_u8_slice();
         self.from.read_exact(s).ok().map(|_| ())
     }
 

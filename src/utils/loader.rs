@@ -1,5 +1,5 @@
 use core::{ mem::MaybeUninit, ops::Deref };
-use super::{ AsMutU8Slice, Pod };
+use super::{ AsU8Slice, Pod };
 
 pub struct Loader< D: Deref< Target = [u8] > > {
     slice : D,
@@ -14,8 +14,8 @@ impl< D: Deref< Target = [u8] > > Loader< D > {
         }
     }
 
-    pub fn load_to< T: AsMutU8Slice + ?Sized >(&mut self, to: &mut T) -> Option< () > {
-        let s        = T::as_u8_slice(to);
+    pub fn load_to< T: AsU8Slice + ?Sized >(&mut self, to: &mut T) -> Option< () > {
+        let s        = T::as_mut_u8_slice(to);
         let range    = self.offset..self.offset + s.len();
         let read     = self.slice.get(range)?;
         self.offset += s.len();

@@ -1,8 +1,8 @@
-use core::ops::Deref;
+use std::io::{ Read, Seek };
 use crate::{ utils::Loader, common::{ FileFormat, Sample } };
 
-pub struct Reader< D: Deref< Target = [u8] > > {
-    loader: Loader< D >,
+pub struct Reader< F: Read + Seek > {
+    loader: Loader< F >,
     format: FileFormat ,
     begin : usize      ,
     end   : usize
@@ -13,9 +13,9 @@ enum RiffType {
     RF64(Option< (u64, u64) >)
 }
 
-impl< D: Deref< Target = [u8] > > Reader< D > {
-    pub fn from(slice: D) -> Option< Reader< D > > {
-        let mut loader = Loader::from(slice);
+impl< F: Read + Seek > Reader< F > {
+    pub fn from(from: F) -> Option< Reader< F > > {
+        let mut loader = Loader::from(from);
 
         let riff_id       : [u8; 4] = loader.load()?;
         let riff_file_size: u32     = loader.load()?;
@@ -43,11 +43,11 @@ impl< D: Deref< Target = [u8] > > Reader< D > {
                         return None
                     }
 
-                    let ds64_chunk_size  : u64 = loader.load  ()?;
-                    let ds64_end_offset        = loader.offset() + ds64_chunk_size as usize;
-                    let ds64_file_size   : u64 = loader.load  ()?;
-                    let ds64_data_size   : u64 = loader.load  ()?;
-                    let ds64_sample_count: u64 = loader.load  ()?;
+                    let ds64_chunk_size  : u64 = loader.load()?;
+                    let ds64_end_pos           = loader.pos () + ds64_chunk_size as usize;
+                    let ds64_file_size   : u64 = loader.load()?;
+                    let ds64_data_size   : u64 = loader.load()?;
+                    let ds64_sample_count: u64 = loader.load()?;
 
                     if ds64_file_size as usize != loader.len() {
                         return None
@@ -55,21 +55,21 @@ impl< D: Deref< Target = [u8] > > Reader< D > {
 
                     riff = RiffType::RF64(Some((ds64_data_size, ds64_sample_count)));
 
-                    if loader.offset() > ds64_end_offset {
+                    if loader.pos() > ds64_end_pos {
                         return None
                     }
 
-                    loader.seek(ds64_end_offset)?;
+                    loader.seek(ds64_end_pos)?;
                 },
                 b"fmt " => {
-                    let fmt_chunk_size  : u32 = loader.load  ()?;
-                    let fmt_end_offset        = loader.offset() + fmt_chunk_size as usize;
-                    let fmt_audio_format: u16 = loader.load  ()?;
-                    let fmt_num_channels: u16 = loader.load  ()?;
-                    let fmt_sample_rate : u32 = loader.load  ()?;
-                    let fmt_byte_rate   : u32 = loader.load  ()?;
-                    let fmt_block_align : u16 = loader.load  ()?;
-                    let fmt_bit_depth   : u16 = loader.load  ()?;
+                    let fmt_chunk_size  : u32 = loader.load()?;
+                    let fmt_end_pos           = loader.pos () + fmt_chunk_size as usize;
+                    let fmt_audio_format: u16 = loader.load()?;
+                    let fmt_num_channels: u16 = loader.load()?;
+                    let fmt_sample_rate : u32 = loader.load()?;
+                    let fmt_byte_rate   : u32 = loader.load()?;
+                    let fmt_block_align : u16 = loader.load()?;
+                    let fmt_bit_depth   : u16 = loader.load()?;
 
                     if fmt_byte_rate != fmt_sample_rate * fmt_num_channels as u32 * fmt_bit_depth as u32 / 8 {
                         return None
@@ -93,27 +93,27 @@ impl< D: Deref< Target = [u8] > > Reader< D > {
                         sample_rate : fmt_sample_rate
                     });
 
-                    if loader.offset() > fmt_end_offset {
+                    if loader.pos() > fmt_end_pos {
                         return None
                     }
 
-                    loader.seek(fmt_end_offset)?;
+                    loader.seek(fmt_end_pos)?;
                 },
                 b"data" => {
-                    let data_chunk_size  : u32 = loader.load  ()?;
-                    let data_begin_offset      = loader.offset() ;
-                    let data_chunk_size        = match riff {
+                    let data_chunk_size: u32 = loader.load  ()?;
+                    let data_begin_pos       = loader.pos() ;
+                    let data_chunk_size      = match riff {
                         RiffType::RF64(Some((ds64_data_size, ..))) if data_chunk_size == 0xFFFFFFFF => ds64_data_size  as usize,
                         RiffType::RIFF                                                              => data_chunk_size as usize,
                         _                                                                           => return None
                     };
-                    let data_end_offset        = data_begin_offset + data_chunk_size;
-                    be                         = Some((data_begin_offset, data_begin_offset + data_chunk_size));
-                    loader.seek(data_end_offset)?;
+                    let data_end_pos = data_begin_pos + data_chunk_size;
+                    be               = Some((data_begin_pos, data_begin_pos + data_chunk_size));
+                    loader.seek(data_end_pos)?;
                 },
                 _ => {
                     let chunk_size: u32 = loader.load()?;
-                    let end_offset      = loader.offset() + chunk_size as usize;
+                    let end_offset      = loader.pos() + chunk_size as usize;
                     loader.seek(end_offset)?;
                 },
             }
@@ -144,8 +144,8 @@ impl< D: Deref< Target = [u8] > > Reader< D > {
     }
 
     pub fn skip(&mut self, n: usize) -> Option< () > {
-        if self.loader.offset() + n * self.format.sample.size() <= self.end {
-            unsafe { self.loader.skip_unchecked(n * self.format.sample.size()) }
+        if self.loader.pos() + n * self.format.sample.size() <= self.end {
+            self.loader.skip(n * self.format.sample.size()).unwrap();
             Some(())
         }
         else {
@@ -154,8 +154,8 @@ impl< D: Deref< Target = [u8] > > Reader< D > {
     }
 
     pub fn rewind(&mut self, n: usize) -> Option< () > {
-        if self.loader.offset() >= self.begin + n * self.format.sample.size() {
-            unsafe { self.loader.rewind_unchecked(n * self.format.sample.size()) }
+        if self.loader.pos() >= self.begin + n * self.format.sample.size() {
+            self.loader.rewind(n * self.format.sample.size()).unwrap();
             Some(())
         }
         else {
@@ -165,7 +165,7 @@ impl< D: Deref< Target = [u8] > > Reader< D > {
 
     pub fn seek(&mut self, n: usize) -> Option< () > {
         if self.begin + n * self.format.sample.size() <= self.end {
-            unsafe { self.loader.seek_unchecked(self.begin + n * self.format.sample.size()) }
+            self.loader.seek(self.begin + n * self.format.sample.size()).unwrap();
             Some(())
         }
         else {

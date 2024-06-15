@@ -33,4 +33,3 @@ impl< T: Write + Seek > Saver< T > {
         self.to.stream_position().ok().unwrap() as usize
     }
 }
-

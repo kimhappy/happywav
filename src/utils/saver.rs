@@ -1,4 +1,4 @@
-use std::{ io::{ Write, Seek } };
+use std::io::{ Write, Seek };
 use super::AsU8Slice;
 
 pub struct Saver< T: Write + Seek > {
@@ -31,10 +31,6 @@ impl< T: Write + Seek > Saver< T > {
 
     pub fn pos(&mut self) -> usize {
         self.to.stream_position().ok().unwrap() as usize
-    }
-
-    pub fn len(&mut self) -> usize {
-        self.to.stream_len().ok().unwrap() as usize
     }
 }
 

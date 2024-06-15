@@ -1,3 +1,3 @@
 mod format;
 
-pub use format::{ Sample, FileFormat };
+pub use format::{ AudioFormat, Sample, FileFormat };

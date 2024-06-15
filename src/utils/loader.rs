@@ -12,14 +12,14 @@ impl< F: Read + Seek > Loader< F > {
         }
     }
 
-    pub fn load_to< T: AsU8Slice + ?Sized >(&mut self, to: &mut T) -> Option< () > {
+    pub fn load< T: AsU8Slice + ?Sized >(&mut self, to: &mut T) -> Option< () > {
         let s = to.as_mut_u8_slice();
         self.from.read_exact(s).ok().map(|_| ())
     }
 
-    pub fn load< T: Pod >(&mut self) -> Option< T > {
+    pub fn cload< T: Pod >(&mut self) -> Option< T > {
         let mut ret = unsafe { MaybeUninit::uninit().assume_init() };
-        self.load_to(&mut ret).map(|_| ret)
+        self.load(&mut ret).map(|_| ret)
     }
 
     pub fn skip(&mut self, n: usize) -> Option< () > {
